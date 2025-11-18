@@ -1,0 +1,29 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{parskip}
+\usepackage[hidelinks]{hyperref}
+\begin{document}
+
+\section*{Research Question}
+How do quarterback air-oriented passing styles (deep/air yards and aggressiveness) relate to drive success and turnover risk in the 2023 NFL season?
+
+\section*{Evidence Plan}
+\textbf{Data:} Use \texttt{nflfastR} 2023 play-by-play (\texttt{nflfastR\_pbp\_2023\_clean.csv}) and the QB weekly/season exports (\texttt{qb\_weekly\_2023.csv}, \texttt{qb\_season\_2023.csv}).
+
+\textbf{Key variables:}
+\begin{itemize}
+  \item Passing style: average air yards per attempt, air-yard share, aggressiveness proxy (deep pass rate), CPOE, EPA/dropback.
+  \item Outcomes: drive success (points per drive, TD rate), turnover risk (INT rate, interceptions per attempt).
+  \item Controls: down/distance mix, score differential (situational aggressiveness), opponent defense.
+\end{itemize}
+
+\textbf{Methods:}
+\begin{itemize}
+  \item Descriptive: correlate air yards and deep rate with INT rate and EPA/dropback across QBs; plot quartiles of air yards vs INT rate.
+  \item Regression: QB-level (or mixed-effects on play/drive level) modeling INT rate and EPA/dropback as functions of air yards per attempt and CPOE, controlling for down/distance and score differential.
+  \item Robustness: repeat with drive-level outcomes (points per drive) and exclude garbage time (score differential within 14 points).
+\end{itemize}
+
+\textbf{Evidence sources:} Primary: stats from \texttt{nflfastR} files above. Secondary: 1--2 academic/analytics articles on air yards/aggressiveness vs efficiency (e.g., QB air yards and EPA, aggressiveness vs turnover risk).
+
+\end{document}

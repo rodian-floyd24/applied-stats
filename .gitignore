@@ -1,0 +1,13 @@
+# Ignore large data outputs and LaTeX aux files
+*.csv
+*.aux
+*.log
+*.out
+*.toc
+*.synctex.gz
+
+# R session files
+.Rhistory
+.RData
+.Rproj.user
+.Rproj
