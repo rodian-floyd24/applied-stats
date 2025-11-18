@@ -44,6 +44,8 @@ reg_epa <- read_csv_dt("regression_epa_coefs.csv")
 - **Regular season only** (if `season_type` present).
 - Spikes, kneels, and penalties removed when columns are available.
 - Air-yards bucketed: Behind LOS, Short (0–9), Intermediate (10–19), Deep (20+).
+- Depth model removes throwaways/batted passes when flags are present.
+- EPA is winsorized at 1st/99th percentiles for regression; quadratic depth term and pressure/play-action flags included when available.
 
 ## Depth Performance (Deep EPA, ≥20 deep attempts)
 
@@ -110,8 +112,8 @@ kable(rbind(
 ## Air-Yards Quartiles: Risk and Reward
 
 Correlations:
-- Quartile vs INT rate: **`r round3(cor(quartile$attempts, quartile$int_rate, use = "complete.obs"))`**
-- Quartile vs EPA: **`r round3(cor(quartile$attempts, quartile$epa_avg, use = "complete.obs"))`**
+- Quartile vs INT rate: **`r round3(cor(as.integer(gsub('Q','', quartile$air_yds_quartile)), quartile$int_rate, use = "complete.obs"))`**
+- Quartile vs EPA: **`r round3(cor(as.integer(gsub('Q','', quartile$air_yds_quartile)), quartile$epa_avg, use = "complete.obs"))`**
 
 ```{r quartile-table}
 qt <- quartile[, .(
@@ -135,8 +137,8 @@ knitr::include_graphics("outputs/epa_by_airyards_quartile.png")
 
 ## Regression Notes
 
-- **INT model (logit)**: predictors = air_yards, cpoe, down, ydstogo, score_differential. Interpret odds ratios (OR > 1 increases INT odds).
-- **EPA model (linear)**: predictors = air_yards, cpoe, down, ydstogo, score_differential.
+- **INT model (logit)**: predictors = air_yards + air_yards², CPOE, down, distance, score differential, pressure flag, play-action flag. Interpret odds ratios (OR > 1 increases INT odds).
+- **EPA model (robust)**: winsorized EPA with air_yards + air_yards², CPOE, down, distance, score differential, pressure flag, play-action flag. Uses Huber regression (falls back to OLS if unavailable).
 
 ```{r reg-int}
 kable(reg_int[, .(term, Estimate = round3(Estimate), `Std. Error` = round3(`Std. Error`),
@@ -151,7 +153,7 @@ kable(reg_epa[, .(term, Estimate = round3(Estimate), `Std. Error` = round3(`Std.
 
 ## Takeaways (Scout Lens)
 
-- Deep aggression correlates positively with EPA but raises INT risk; only a few QBs (e.g., Purdy, Prescott, Stroud) pair high deep volume with strong efficiency.
-- Early-down efficiency leaders sustain positive EPA with low INTs, setting up easier late downs.
-- 3rd/4th-down conversion kings (Prescott, Purdy, Love) pair conversion rate with positive EPA; laggards not shown here but evident in full CSV.
-- Pressure splits are thin; observed pressured EPA for qualified QBs trends negative—supporting the need for protection or quick game to mitigate risk.
+- Deep aggression correlates positively with EPA but raises INT risk; leaders shown here require volume filters (≥20 deep attempts) to mitigate small-sample noise.
+- Early-down efficiency leaders sustain positive EPA with low INTs, setting up easier late downs; late-down conversion should be judged by conversion %, not raw EPA spikes.
+- 3rd/4th-down conversion leaders pair rate with positive EPA; see full CSV for laggards.
+- Pressure splits (when available) trend negative; without pressure controls, air-yard effects overstate QB-driven gains.

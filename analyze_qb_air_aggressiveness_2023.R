@@ -9,6 +9,7 @@ min_drive_plays <- 3           # drop very short/invalid drives
 regular_season_only <- TRUE    # restrict to REG if column exists
 depth_bins <- c(-99, -1, 9, 19, Inf) # screen/short/intermediate/deep
 depth_labels <- c("Behind LOS", "Short (0-9)", "Intermediate (10-19)", "Deep (20+)")
+min_deep_att <- 20             # min deep attempts for leaderboards
 
 # Try to find files in working dir, then parent (in case data weren’t copied into repo)
 find_file <- function(name) {
@@ -58,9 +59,9 @@ if (regular_season_only && "season_type" %in% names(pbp)) {
   pbp <- pbp[season_type == "REG"]
 }
 
-# Focus on dropbacks with air-yards info; drop spikes/kneels/penalties if available
+# Focus on dropbacks with air-yards info; drop spikes/kneels/penalties/throwaways/batted if available
 pass_plays <- pbp[pass == 1 & !is.na(air_yards)]
-for (col in c("qb_spike", "qb_kneel", "penalty")) {
+for (col in c("qb_spike", "qb_kneel", "penalty", "throw_out", "batted_pass")) {
   if (col %in% names(pass_plays)) {
     pass_plays <- pass_plays[(get(col) == 0) | is.na(get(col))]
   }
@@ -69,6 +70,11 @@ pass_plays <- pass_plays[!is.na(epa)]
 
 # Add depth buckets
 pass_plays[, depth_bucket := cut(air_yards, breaks = depth_bins, labels = depth_labels, include.lowest = TRUE, right = TRUE)]
+
+# Winsorize EPA to dampen outliers for regression
+epa_bounds <- quantile(pass_plays$epa, probs = c(0.01, 0.99), na.rm = TRUE)
+pass_plays[, epa_w := pmin(pmax(epa, epa_bounds[1]), epa_bounds[2])]
+pass_plays[, air_yards_sq := air_yards^2]
 
 # QB-level aggressiveness/air-yards metrics
 qb_air <- pass_plays[, .(
@@ -207,15 +213,26 @@ ggsave(filename = file.path("outputs", "int_rate_by_airyards_quartile.png"), plo
 ggsave(filename = file.path("outputs", "epa_by_airyards_quartile.png"), plot = epa_plot, width = 6, height = 4)
 
 # Regressions
-reg_data <- pass_plays[complete.cases(air_yards, cpoe, down, ydstogo, score_differential)]
+reg_data <- copy(pass_plays)
+reg_data[, pressure_flag := if ("pressured" %in% names(reg_data)) as.integer(pressured) else 0L]
+reg_data[, play_action_flag := if ("in_play_action" %in% names(reg_data)) fifelse(is.na(in_play_action), 0L, as.integer(in_play_action)) else 0L]
+reg_data <- reg_data[complete.cases(air_yards, air_yards_sq, cpoe, down, ydstogo, score_differential, pressure_flag, play_action_flag)]
 
-int_model <- glm(interception ~ air_yards + cpoe + down + ydstogo + score_differential,
+int_model <- glm(interception ~ air_yards + air_yards_sq + cpoe + down + ydstogo + score_differential + pressure_flag + play_action_flag,
                  data = reg_data, family = binomial(link = "logit"))
 int_coefs <- as.data.table(coef(summary(int_model)), keep.rownames = "term")
+int_coefs[, odds_ratio := exp(Estimate)]
 fwrite(int_coefs, file.path("outputs", "regression_int_rate_coefs.csv"))
 
-epa_model <- lm(epa ~ air_yards + cpoe + down + ydstogo + score_differential,
-                data = reg_data)
+# Robust EPA model: winsorized EPA with quadratic depth and pressure
+epa_model <- tryCatch(
+  {
+    suppressWarnings(MASS::rlm(epa_w ~ air_yards + air_yards_sq + cpoe + down + ydstogo + score_differential + pressure_flag + play_action_flag,
+                               data = reg_data, psi = MASS::psi.huber))
+  },
+  error = function(e) lm(epa_w ~ air_yards + air_yards_sq + cpoe + down + ydstogo + score_differential + pressure_flag + play_action_flag,
+                         data = reg_data)
+)
 epa_coefs <- as.data.table(coef(summary(epa_model)), keep.rownames = "term")
 fwrite(epa_coefs, file.path("outputs", "regression_epa_coefs.csv"))
 
@@ -249,6 +266,7 @@ qb_depth_pretty <- qb_depth[, .(
   epa_avg = round3(epa_avg),
   cpoe_avg = round3(cpoe_avg)
 )]
+qb_depth_pretty <- qb_depth_pretty[attempts >= min_deep_att | depth_bucket != "Deep (20+)"]
 fwrite(qb_depth_pretty, file.path("outputs", "qb_depth_splits_readable.csv"))
 
 # Situational readable
