@@ -10,6 +10,7 @@ regular_season_only <- TRUE    # restrict to REG if column exists
 depth_bins <- c(-99, -1, 9, 19, Inf) # screen/short/intermediate/deep
 depth_labels <- c("Behind LOS", "Short (0-9)", "Intermediate (10-19)", "Deep (20+)")
 min_deep_att <- 20             # min deep attempts for leaderboards
+min_early_db <- 100            # min early-down dropbacks for stability
 
 # Try to find files in working dir, then parent (in case data weren’t copied into repo)
 find_file <- function(name) {

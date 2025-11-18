@@ -64,6 +64,7 @@ kable(deep_top, align = "l")
 
 ```{r early-table}
 ed <- qb_sit[early_down == TRUE & third_fourth == FALSE & dropbacks >= 30]
+ed <- ed[dropbacks >= 100]  # stabilize early-down EPA
 ed_top <- top_n(ed[order(-epa_per_db)], 5)[
   , .(QB = passer_player_name, Team = team, DB = dropbacks,
       `EPA/db` = round3(epa_per_db),
@@ -111,9 +112,7 @@ kable(rbind(
 
 ## Air-Yards Quartiles: Risk and Reward
 
-Correlations:
-- Quartile vs INT rate: **`r round3(cor(as.integer(gsub('Q','', quartile$air_yds_quartile)), quartile$int_rate, use = "complete.obs"))`**
-- Quartile vs EPA: **`r round3(cor(as.integer(gsub('Q','', quartile$air_yds_quartile)), quartile$epa_avg, use = "complete.obs"))`**
+Quartiles are ordinal; linear correlations can overstate effects. Use grouped summaries instead.
 
 ```{r quartile-table}
 qt <- quartile[, .(
@@ -157,3 +156,4 @@ kable(reg_epa[, .(term, Estimate = round3(Estimate), `Std. Error` = round3(`Std.
 - Early-down efficiency leaders sustain positive EPA with low INTs, setting up easier late downs; late-down conversion should be judged by conversion %, not raw EPA spikes.
 - 3rd/4th-down conversion leaders pair rate with positive EPA; see full CSV for laggards.
 - Pressure splits (when available) trend negative; without pressure controls, air-yard effects overstate QB-driven gains.
+*Small-sample note: variance remains high near the 20-attempt cutoff; interpret EPA with caution for the smaller-volume QBs.*
