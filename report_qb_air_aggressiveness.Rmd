@@ -1,0 +1,157 @@
+---
+title: "QB Air-Yards Aggressiveness (2023)"
+output:
+  pdf_document:
+    toc: true
+    number_sections: false
+    latex_engine: xelatex
+fontsize: 11pt
+geometry: margin=1in
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message = FALSE, warning = FALSE)
+library(data.table)
+library(knitr)
+
+top_n <- function(dt, n = 5) dt[seq_len(min(n, nrow(dt)))]
+bottom_n <- function(dt, n = 5) {
+  if (nrow(dt) == 0) return(dt)
+  start <- max(1, nrow(dt) - n + 1)
+  dt[seq(start, nrow(dt))]
+}
+
+percent <- function(x) sprintf("%.1f%%", x)
+round3 <- function(x) sprintf("%.3f", x)
+
+base_path <- "outputs"
+read_csv_dt <- function(name) fread(file.path(base_path, name))
+
+qb_air <- read_csv_dt("qb_airyards_aggressiveness_2023_readable.csv")
+qb_depth <- read_csv_dt("qb_depth_splits_readable.csv")
+qb_sit <- read_csv_dt("qb_situational_splits_readable.csv")
+qb_conv <- read_csv_dt("qb_third_fourth_conv_readable.csv")
+drive_out <- read_csv_dt("drive_outcomes_2023_readable.csv")
+quartile <- read_csv_dt("airyards_quartile_summary_readable.csv")
+reg_int <- read_csv_dt("regression_int_rate_coefs_readable.csv")
+reg_epa <- read_csv_dt("regression_epa_coefs.csv")
+```
+
+## Approach and Filters
+
+- QBs with at least **100 dropbacks** (from play-by-play with air yards).
+- Drives shorter than **3 plays** removed for drive efficiency.
+- **Regular season only** (if `season_type` present).
+- Spikes, kneels, and penalties removed when columns are available.
+- Air-yards bucketed: Behind LOS, Short (0–9), Intermediate (10–19), Deep (20+).
+
+## Depth Performance (Deep EPA, ≥20 deep attempts)
+
+```{r deep-table}
+deep_top <- qb_depth[
+  depth_bucket == "Deep (20+)" & attempts >= 20 & !is.na(epa_avg)
+][order(-epa_avg)]
+deep_top <- top_n(deep_top, 5)[
+  , .(QB = passer_player_name, Team = team, Attempts = attempts,
+      `EPA/att` = round3(epa_avg), `INT rate` = int_rate_pct)
+]
+kable(deep_top, align = "l")
+```
+
+## Early Down Efficiency (EPA/dropback, ≥30 dropbacks)
+
+```{r early-table}
+ed <- qb_sit[early_down == TRUE & third_fourth == FALSE & dropbacks >= 30]
+ed_top <- top_n(ed[order(-epa_per_db)], 5)[
+  , .(QB = passer_player_name, Team = team, DB = dropbacks,
+      `EPA/db` = round3(epa_per_db),
+      `Success` = success_pct,
+      `TD rate` = td_rate_pct,
+      `INT rate` = int_rate_pct)
+]
+kable(ed_top, align = "l")
+```
+
+## 3rd/4th Down Conversions (≥30 attempts)
+
+```{r third-table}
+conv_top <- qb_conv[attempts >= 30][order(-conv_rate_pct)]
+conv_top <- top_n(conv_top, 5)[
+  , .(QB = passer_player_name, Team = team, Attempts = attempts,
+      `Conv%` = conv_rate_pct,
+      `EPA/db` = round3(epa_per_db))
+]
+kable(conv_top, align = "l")
+```
+
+## Team Drive Efficiency
+
+```{r drive-table}
+drive_top <- top_n(drive_out[order(-points_per_drive)], 5)[
+  , .(Team = posteam,
+      Drives = drives,
+      `Pts/drive` = round3(points_per_drive),
+      `TD rate` = td_rate_pct,
+      `INT rate` = int_rate_pct)
+]
+drive_bottom <- top_n(drive_out[order(points_per_drive)], 5)[
+  , .(Team = posteam,
+      Drives = drives,
+      `Pts/drive` = round3(points_per_drive),
+      `TD rate` = td_rate_pct,
+      `INT rate` = int_rate_pct)
+]
+kable(rbind(
+  data.table(Side = "Top", drive_top),
+  data.table(Side = "Bottom", drive_bottom)
+), align = "l")
+```
+
+## Air-Yards Quartiles: Risk and Reward
+
+Correlations:
+- Quartile vs INT rate: **`r round3(cor(quartile$attempts, quartile$int_rate, use = "complete.obs"))`**
+- Quartile vs EPA: **`r round3(cor(quartile$attempts, quartile$epa_avg, use = "complete.obs"))`**
+
+```{r quartile-table}
+qt <- quartile[, .(
+  Quartile = air_yds_quartile,
+  Attempts = attempts,
+  `INT rate` = int_rate_pct,
+  `EPA/db` = round3(epa_avg)
+)]
+kable(qt, align = "l")
+```
+
+### Visuals
+
+```{r quartile-plots, fig.align='center', out.width='48%'}
+knitr::include_graphics("outputs/int_rate_by_airyards_quartile.png")
+```
+
+```{r quartile-plots-epa, fig.align='center', out.width='48%'}
+knitr::include_graphics("outputs/epa_by_airyards_quartile.png")
+```
+
+## Regression Notes
+
+- **INT model (logit)**: predictors = air_yards, cpoe, down, ydstogo, score_differential. Interpret odds ratios (OR > 1 increases INT odds).
+- **EPA model (linear)**: predictors = air_yards, cpoe, down, ydstogo, score_differential.
+
+```{r reg-int}
+kable(reg_int[, .(term, Estimate = round3(Estimate), `Std. Error` = round3(`Std. Error`),
+                  `z value` = round3(`z value`), `Pr(>|z|)` = round3(`Pr(>|z|)`),
+                  `Odds Ratio` = round3(odds_ratio))], align = "l")
+```
+
+```{r reg-epa}
+kable(reg_epa[, .(term, Estimate = round3(Estimate), `Std. Error` = round3(`Std. Error`),
+                  `t value` = round3(`t value`), `Pr(>|t|)` = round3(`Pr(>|t|)`))], align = "l")
+```
+
+## Takeaways (Scout Lens)
+
+- Deep aggression correlates positively with EPA but raises INT risk; only a few QBs (e.g., Purdy, Prescott, Stroud) pair high deep volume with strong efficiency.
+- Early-down efficiency leaders sustain positive EPA with low INTs, setting up easier late downs.
+- 3rd/4th-down conversion kings (Prescott, Purdy, Love) pair conversion rate with positive EPA; laggards not shown here but evident in full CSV.
+- Pressure splits are thin; observed pressured EPA for qualified QBs trends negative—supporting the need for protection or quick game to mitigate risk.
