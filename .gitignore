@@ -5,6 +5,7 @@
 *.out
 *.toc
 *.synctex.gz
+outputs/
 
 # R session files
 .Rhistory
